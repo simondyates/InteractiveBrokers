@@ -1,11 +1,13 @@
 import subprocess
+from time import sleep
 import os
 import re
 import urllib3
-import requests
+import asyncio
+from aiohttp import ClientSession
 import pandas as pd
 
-ib_gateway_host = r"https://localhost"
+ib_gateway_host = r"https://127.0.0.1"
 ib_gateway_port = r"5000"
 ib_gateway_path = ib_gateway_host + ":" + ib_gateway_port
 api_version = 'v1/'
@@ -24,45 +26,8 @@ def get_gateway_pid():
 def start_sso():
     # consider refactoring with .run the next time you call this
     client = subprocess.Popen(args=['bin/run.sh', 'root/conf.yaml'], cwd='./clientportal', preexec_fn=os.setsid)
-    _ = input('Are you done?')
-
-def build_url(endpoint):
-    return ib_gateway_path + '/' + api_version + r'portal/' + endpoint
-
-def make_request(endpoint, req_type, params=None):
-    url = build_url(endpoint=endpoint)
-
-    # SCENARIO 1: POST without a payload.
-    if req_type == 'POST' and params is None:
-        response = requests.post(url, headers=header, verify=False)
-
-    # SCENARIO 2: POST with a payload.
-    elif req_type == 'POST' and params is not None:
-        response = requests.post(url, headers=header, json=params, verify=False)
-
-    # SCENARIO 3: GET without parameters.
-    elif req_type == 'GET' and params is None:
-        response = requests.get(url, headers=header, verify=False)
-
-    # SCENARIO 4: GET with parameters.
-    elif req_type == 'GET' and params is not None:
-        response = requests.get(url, headers=header, params=params, verify=False)
-
-    # Check to see if it was successful
-    if response.ok:
-        return response.json()
-
-    # if it was a bad request print it out.
-    elif not response.ok and url != 'https://localhost:5000/v1/portal/iserver/account':
-        print('')
-        print('-' * 80)
-        print("BAD REQUEST - STATUS CODE: {}".format(response.status_code))
-        print("RESPONSE URL: {}".format(response.url))
-        print("RESPONSE HEADERS: {}".format(response.headers))
-        print("RESPONSE TEXT: {}".format(response.text))
-        print('-' * 80)
-        print('')
-        return None
+    sleep(2)
+    _ = input("\nPress Enter once you've logged in successfully.")
 
 def is_authenticated():
     # Checks to see if an existing sso session is authenticated
@@ -88,44 +53,66 @@ def tickle():
     else:
         return content['ssoExpires'] # time in ms to session expiry
 
-def symbol_search(symbol):
-    # Return IB conids matching the symbol
+def build_url(endpoint):
+    return ib_gateway_path + '/' + api_version + r'portal/' + endpoint
+
+async def make_request_async(endpoint, req_type, session, params=None):
+    url = build_url(endpoint=endpoint)
+
+    # SCENARIO 1: No payload.
+    if params is None:
+        response = await session.request(method=req_type, url=url, headers=header, ssl=False)
+
+    # SCENARIO 2: Payload.
+    else:
+        response = await session.request(method=req_type, url=url, headers=header, params=params, ssl=False)
+
+        # Check to see if it was successful
+    return await response.json()
+
+async def symbol_search_async(symbol_list):
+    # Return IB conids matching the symbols in the list
     endpoint = 'iserver/secdef/search'
     req_type = 'POST'
-    payload = {'symbol': symbol}
-    content = make_request(endpoint=endpoint, req_type=req_type, params=payload)
-    return content
+    tasks = []
+    async with ClientSession() as session:
+        for sym in symbol_list:
+            tasks.append(make_request_async(endpoint, req_type, session, {'symbol': sym}))
+        return await asyncio.gather(*tasks)
 
-def symbol_search_iter(sym_list):
-    return [symbol_search(sym) for sym in sym_list]
+def symbol_search(symbol_list):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(symbol_search_async(tickers))
 
 def filter_sym_search(search_results):
     # Select the primary US conid from a list of lists, ignoring null responses
-    # Assumes None responses have been removed first
-    US_exchanges = ['NYSE', 'NASDAQ', 'ARCA']
+    US_exchanges = ['NYSE', 'NASDAQ', 'ARCA', 'BATS']
     results = [None if len(j)==0 else j[0] for j in
-               [[el['conid'] for el in search_results[i] if el['description'] in US_exchanges]
+               [[el['conid'] for el in search_results[i] if el != 'error' and el['description'] in US_exchanges]
                 for i in range(len(search_results))]]
     return results
 
-def market_data_history(conid, exchange, period, bar):
-    # Define request components
+async def market_data_history_async(conids, exchange, period, bar):
+    # This *ought* to need semaphor to limit concurrent requests to 5, but so far I haven't seen errors
     endpoint = 'iserver/marketdata/history'
     req_type = 'GET'
-    params = {
-        'conid': conid,
-        'exchange': exchange,
-        'period': period,
-        'bar': bar
-    }
-    content = make_request(endpoint=endpoint, req_type=req_type, params=params)
-    return content
+    tasks = []
+    async with ClientSession() as session:
+        for conid in conids:
+            tasks.append(make_request_async(endpoint=endpoint, req_type=req_type, session=session,
+                                 params={'conid': conid, 'exchange': exchange, 'period': period, 'bar': bar}))
+        return await asyncio.gather(*tasks)
+
+def market_data_history(conids, exchange, period, bar):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(market_data_history_async(conids, exchange, period, bar))
 
 urllib3.disable_warnings()
 if get_gateway_pid() is None:
     start_sso()
 sp5 = pd.read_csv('../LeadLag/Data/SPX_weights_07-24-2020.csv')
 tickers = sp5['Symbol']
-multi = symbol_search_iter(tickers)
-errors = [i for i, l in enumerate(multi) if l is None]
-print(filter_sym_search(multi))
+tickers = [tck.replace('.', ' ') for tck in tickers]
+multi = symbol_search(tickers)
+conids = filter_sym_search(multi)
+bars = market_data_history(conids, 'SMART', '1min', '1min')
