@@ -5,6 +5,7 @@ import webbrowser
 import os
 import signal
 import requests
+import warnings
 import asyncio
 from aiohttp import ClientSession
 
@@ -53,6 +54,7 @@ class IBClient(object):
         if response.status_code == 200:
             return response.json()
         else:
+            warnings.warn(f'Received error {response.status_code}')
             return None
 
     def connect(self):
@@ -61,6 +63,7 @@ class IBClient(object):
             return True
         elif self.get_gateway_pid() is None:
             subprocess.Popen(args=['bin/run.sh', 'root/conf.yaml'], cwd='./clientportal', preexec_fn=os.setsid)
+            webbrowser.open(self._ib_gateway_url, new=2)
         else:
             webbrowser.open(self._ib_gateway_url, new=2)
         sleep(2)
@@ -95,6 +98,7 @@ class IBClient(object):
         if response.status == 200:
             return await response.json()
         else:
+            warnings.warn(f'Received error {response.status}')
             return None
 
     async def _symbol_search_async(self, symbol_list):
