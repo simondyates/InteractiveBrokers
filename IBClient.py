@@ -72,7 +72,7 @@ class IBClient(object):
         return self.is_authenticated
 
     def reauthenticate(self):
-        # I have no idea what this does
+        # I have no idea why IB provide this functionality but I implemented it anyway
         content = self._make_request(endpoint=r'iserver/reauthenticate', req_type='POST')
         if content is None:
             return None

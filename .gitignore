@@ -1,0 +1,8 @@
+**/venv
+**/.idea
+**/.DS_Store
+**/.ipynb_checkpoints
+**/__pycache__
+**/clientportal/logs
+**/twsapi_macunix
+scratch.py

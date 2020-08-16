@@ -39,7 +39,8 @@ def save_conids(tickers, size):
 
 def main():
     urllib3.disable_warnings()
-    tickers = ['A']
+    betas = pd.read_pickle('/Volumes/share/StockData/Betas/30min Betas Apr-14 to Jul-14 R2K last 353.pkl')
+    tickers = ['GTX']
     save_conids(tickers, 500)
 
 if __name__ == '__main__':
