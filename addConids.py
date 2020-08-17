@@ -23,10 +23,11 @@ def divide_chunks(tickers, size):
     for i in range(0, len(tickers), size):
         yield tickers[i:i + size]
 
-def save_conids(tickers, size):
+def save_conids(tickers, size, revalidate=False):
     # Read in current conid.pkl and add new tickers if needed
-    conids = pd.read_pickle('./data/conids.pkl')
-    tickers = [t for t in tickers if t not in conids.index]
+    if not revalidate:
+        conids = pd.read_pickle('./data/conids.pkl')
+        tickers = [t for t in tickers if t not in conids.index]
     tickers = [t.replace('.', ' ').replace('/', ' ') for t in tickers]
     if len(tickers) > 0:
         for tcks in divide_chunks(tickers, size):
@@ -34,14 +35,16 @@ def save_conids(tickers, size):
             new_conids = get_conids(tcks)
             new_conids = pd.Series(new_conids, index=tcks, dtype='uint64')
             new_conids = dupe_spaced(new_conids)
-            conids = conids.append(new_conids)
-            conids.to_pickle('./data/conids.pkl')
+            if not revalidate:
+                conids = conids.append(new_conids)
+                conids.to_pickle('./data/conids.pkl')
+            else:
+                new_conids.to_pickle('./data/conids.pkl')
 
-def main():
-    urllib3.disable_warnings()
-    betas = pd.read_pickle('/Volumes/share/StockData/Betas/30min Betas Apr-14 to Jul-14 R2K last 353.pkl')
-    tickers = ['GTX']
-    save_conids(tickers, 500)
 
 if __name__ == '__main__':
-    main()
+    urllib3.disable_warnings()
+    betas = pd.read_pickle('/Volumes/share/StockData/Betas/30min Betas Apr-14 to Jul-14 R2K last 353.pkl')
+    tickers = betas.index.union(betas.columns)
+    tickers = [t for t in tickers if t not in ['CRC', 'SBBX']]
+    save_conids(tickers, 500, True)

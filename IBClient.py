@@ -13,7 +13,7 @@ class IBClient(object):
     def __init__(self):
         self._ib_gateway_url = r'https://127.0.0.1:5000'
         self._ib_gateway_path = self._ib_gateway_url + r'/v1/portal/'
-        self._client_portal_folder = './clientportal'
+        self._client_portal_folder = './clientportal.gw'
         self._header = {'Content-Type': 'application/json'}
         self.pid = None
         self.is_authenticated = False
@@ -59,13 +59,18 @@ class IBClient(object):
 
     def connect(self):
         # Determines whether there's already a valid connection and connects if not
-        if self.check_authenticated():
-            return True
-        elif self.get_gateway_pid() is None:
-            subprocess.Popen(args=['bin/run.sh', 'root/conf.yaml'], cwd='./clientportal', preexec_fn=os.setsid)
+        try:
+            bool = self.check_authenticated()
+            if bool:
+                return True
+            else:
+                print(f'Gateway exists on pid {self.pid} but is not authenticated.')
+                webbrowser.open(self._ib_gateway_url, new=2)
+        except:
+            print('No gateway')
+            subprocess.Popen(args=['bin/run.sh', 'root/conf.yaml'], cwd='./clientportal.gw', preexec_fn=os.setsid)
             webbrowser.open(self._ib_gateway_url, new=2)
-        else:
-            webbrowser.open(self._ib_gateway_url, new=2)
+
         sleep(2)
         _ = input("\nPress Enter once you've logged in successfully.")
         self.is_authenticated = self.check_authenticated()

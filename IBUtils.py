@@ -7,6 +7,9 @@ def filter_US_conids(search_results):
     results = [None if len(j) == 0 else j[0] for j in
            [[el['conid'] for el in search_results[i] if el != 'error' and el['description'] in US_exchanges]
            for i in range(len(search_results))]]
+    errors = [i for i, t in enumerate(results) if t is None]
+    if len(errors) > 0:
+        warnings.warn(f'None objects in locations {errors}.')
     return results
 
 def data_bars_to_df(bars):
