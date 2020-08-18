@@ -36,7 +36,7 @@ class IBClient(object):
         if content is None:
             self.is_authenticated = False
         else:
-            self.is_authenticated = True
+            self.is_authenticated = content['authenticated']
         return self.is_authenticated
 
     def _make_request(self, endpoint, req_type, params=None):
@@ -104,7 +104,18 @@ class IBClient(object):
             return await response.json()
         else:
             warnings.warn(f'Received error {response.status}')
-            return None
+            if response.status in [400, 401]:
+                # Try to fix the problem
+                bool = self.reauthenticate()
+                if bool:
+                    print('Seemingly successful reconnect, retrying')
+                    response = await session.request(method=req_type, url=url, headers=self._header, params=params,
+                                                     ssl=False)
+                    if response.status == 200:
+                        print('Success')
+                        return await response.json()
+                print('Apparently not')
+        return None
 
     async def _symbol_search_async(self, symbol_list):
         # Return IB conids matching the symbols in the list
@@ -135,4 +146,3 @@ class IBClient(object):
     def market_data_history(self, conids, exchange, period, bar):
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(self._market_data_history_async(conids, exchange, period, bar))
-

@@ -3,6 +3,7 @@
 **/.DS_Store
 **/.ipynb_checkpoints
 **/__pycache__
-**/clientportal/logs
+**/clientportal.gw/logs
+**/clientportal.gw/.vertx
 **/twsapi_macunix
 scratch.py
