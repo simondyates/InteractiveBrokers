@@ -20,6 +20,7 @@ class IBClient(object):
             'Content-Type': 'application/json'}
         self.pid = None
         self.is_authenticated = False
+        self.accounts_queried = False
 
     def get_gateway_pid(self):
         # Determine if the IB gateway is running and return pid if so
@@ -172,6 +173,16 @@ class IBClient(object):
         endpoint = 'portfolio/accounts'
         req_type = 'GET'
         return self._make_request(endpoint=endpoint, req_type=req_type)
+
+    def market_data_live(self, conids, fields=None):
+        endpoint = 'iserver/marketdata/snapshot'
+        req_type = 'GET'
+        conids =  ', '.join(map(lambda i: str(i), conids))
+        fields = ', '.join(map(lambda i: str(i), fields))
+        if not self.accounts_queried:
+            self.get_accounts()
+        params = {'conids': conids, 'fields': fields}
+        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)
 
     def get_positions(self, id, period='1D'):
         # Need to see what return looks like and page through for more than 30 positions

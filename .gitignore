@@ -7,4 +7,5 @@
 **/clientportal.gw/logs
 **/clientportal.gw/.vertx
 **/twsapi_macunix
+**/data/DayData
 scratch.py
