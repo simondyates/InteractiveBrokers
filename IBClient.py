@@ -8,23 +8,34 @@ import requests
 import warnings
 import asyncio
 from aiohttp import ClientSession
+import json
 
 class IBClient(object):
     def __init__(self):
         self._ib_gateway_url = r'https://127.0.0.1:5000'
         self._ib_gateway_path = self._ib_gateway_url + r'/v1/portal/'
         self._client_portal_folder = './clientportal.gw'
-        self._header = {'Content-Type': 'application/json'}
+        self._header = {
+            'accept': 'application/json',
+            'Content-Type': 'application/json'}
         self.pid = None
         self.is_authenticated = False
 
     def get_gateway_pid(self):
         # Determine if the IB gateway is running and return pid if so
         out = subprocess.run(['lsof', '-i', 'tcp:5000'], capture_output=True)
-        match_ = re.match('^[^\d]*(\d+)', out.stdout.decode('utf-8'))
+        out_str = out.stdout.decode('utf-8')
+        loc = str.find(out_str, 'java')
+        if loc == -1:
+            self.pid = None
+            return self.pid
+        match_ = re.match('^[^\d]*(\d+)', out_str[loc:])
         if match_ is not None:
             self.pid = int(match_.group(1))
-        return self.pid
+            return self.pid
+        else:
+            self.pid = None
+            return self.pid
 
     def stop_sso(self):
         if self.pid is not None:
@@ -43,11 +54,11 @@ class IBClient(object):
         url = self._ib_gateway_path + endpoint
 
         if req_type == 'POST' and params is not None:
-            response = requests.post(url, headers=self._header, json=params, verify=False)
+            response = requests.post(url, headers=self._header, data=json.dumps(params), verify=False)
         elif req_type == 'POST' and params is None:
             response = requests.post(url, headers=self._header, verify=False)
         elif req_type == 'GET' and params is not None:
-            response = requests.get(url, headers=self._header, json=params, verify=False)
+            response = requests.get(url, headers=self._header, params=params, verify=False)
         elif req_type == 'GET' and params is None:
             response = requests.get(url, headers=self._header, verify=False)
 
@@ -55,7 +66,7 @@ class IBClient(object):
             return response.json()
         else:
             warnings.warn(f'Received error {response.status_code}')
-            return None
+            return response.json()
 
     def connect(self):
         # Determines whether there's already a valid connection and connects if not
@@ -64,6 +75,7 @@ class IBClient(object):
             if bool:
                 return True
             else:
+                self.get_gateway_pid()
                 print(f'Gateway exists on pid {self.pid} but is not authenticated.')
                 webbrowser.open(self._ib_gateway_url, new=2)
         except:
@@ -73,6 +85,7 @@ class IBClient(object):
 
         sleep(2)
         _ = input("\nPress Enter once you've logged in successfully.")
+        self.pid = self.get_gateway_pid()
         self.is_authenticated = self.check_authenticated()
         return self.is_authenticated
 
@@ -82,7 +95,7 @@ class IBClient(object):
         if content is None:
             return None
         else:
-            return True
+            return content
 
     def tickle(self):
         # Pings the server to keep the session from timing out
@@ -146,3 +159,38 @@ class IBClient(object):
     def market_data_history(self, conids, exchange, period, bar):
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(self._market_data_history_async(conids, exchange, period, bar))
+
+    def get_quotes(self, conids, since=None, fields=None):
+        # Need to test this and make sure passing None is ok
+        endpoint = 'iserver/marketdata/snapshot'
+        req_type = 'GET'
+        params = {'conids': conids, 'since': since, 'fields': fields}
+        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+
+    def get_accounts(self):
+        # Need to test and see if it makes sense to set attribs from here
+        endpoint = 'portfolio/accounts'
+        req_type = 'GET'
+        return self._make_request(endpoint=endpoint, req_type=req_type)
+
+    def get_positions(self, id, period='1D'):
+        # Need to see what return looks like and page through for more than 30 positions
+        pageId = 0
+        endpoint = f'portfolio/{id}/positions/{pageId}'
+        req_type = 'GET'
+        params = {'period': period}
+        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+
+    def place_order(self, id, conid, cOID, orderType, outsideRTH, price, side, quantity, tif, useAdaptive):
+        endpoint = f'iserver/account/{id}/order'
+        req_type = 'POST'
+        params = {'conid': conid, 'secType': str(conid)+':STK', 'cOID': cOID,
+                  'orderType': orderType, 'outsideRTH': outsideRTH, 'price': price, 'side': side,
+                  'quantity': quantity, 'tif': tif, 'useAdaptive': useAdaptive}
+        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+
+    def reply_order(self, id, confirmed):
+        endpoint = f'iserver/reply/{id}'
+        req_type = 'POST'
+        params = {'confirmed': confirmed}
+        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)

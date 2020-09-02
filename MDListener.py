@@ -6,9 +6,9 @@ import time
 import urllib3
 
 def test_connection():
-    result = ib.market_data_history(conids[0], 'SMART', '1min', '1min')
+    result = ib.market_data_history([int(conids[0])], '', '1min', '1min')
     if result is None:
-        print('Received None Response')
+        print('None Response')
     else:
         result = ib.tickle()
         print(f'Connection alive for next {result/60000:.2f} minutes.')
@@ -22,14 +22,14 @@ def update_intraday():
             ib.reauthenticate()
     except:
         ib.connect()
-    data = ib.market_data_history(conids, 'SMART', '1min', '1min')
+    data = ib.market_data_history(conids, '', '1min', '1min') #Changed exchange field from SMART
     df = data_bars_to_df(data)
     first_time = df.index.get_level_values(0)[0]
     df = df.loc[first_time]
     idx = pd.MultiIndex.from_product([[first_time], df.index])
     df.index = idx
     day_data = pd.concat([day_data, df])
-    day_data.to_pickle(f'/Volumes/share/StockData/DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl')
+    day_data.to_pickle(f'./data/DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl')
     return None
 
 def get_next_minute_ten(dt):
@@ -46,21 +46,20 @@ if __name__ == '__main__':
     urllib3.disable_warnings()
 
     # Define universe to listen to
-    betas = pd.read_pickle('/Volumes/share/StockData/Betas/30min Betas Apr-14 to Jul-14 R2K last 353.pkl')
-    universe = betas.index.union(betas.columns)
-    universe = [t for t in universe if t not in ['CRC', 'SBBX']]
+    universe = pd.read_pickle('./data/SPX+MID+R2K_USD5mADV.pkl')
+    etfs = pd.read_pickle('./data/ETFs.pkl')
+    universe = universe + etfs
+
     conid_db = pd.read_pickle('./data/conids.pkl')
     conids = conid_db.loc[universe]
 
     # Connect and (re-)initialise day_data df
     ib = IBClient()
     ib.connect()
-    dayfile = f'/Volumes/share/StockData/DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl'
+    dayfile = f'./data/DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl'
     if os.path.exists(dayfile):
         day_data = pd.read_pickle(dayfile)
     else:
-
-
         day_data = pd.DataFrame(columns=['Open', 'High', 'Low', 'Close', 'Volume'])
 
     # Loop until start of day, testing connection health every minute

@@ -33,6 +33,9 @@ def save_conids(tickers, size, revalidate=False):
         for tcks in divide_chunks(tickers, size):
             print('Querying IB')
             new_conids = get_conids(tcks)
+            # Filter out none values
+            tcks = [tcks[i] for i in range(len(new_conids)) if new_conids[i] is not None]
+            new_conids = [new_conids[i] for i in range(len(new_conids)) if new_conids[i] is not None]
             new_conids = pd.Series(new_conids, index=tcks, dtype='uint64')
             new_conids = dupe_spaced(new_conids)
             if not revalidate:
@@ -44,7 +47,7 @@ def save_conids(tickers, size, revalidate=False):
 
 if __name__ == '__main__':
     urllib3.disable_warnings()
-    betas = pd.read_pickle('/Volumes/share/StockData/Betas/30min Betas Apr-14 to Jul-14 R2K last 353.pkl')
-    tickers = betas.index.union(betas.columns)
-    tickers = [t for t in tickers if t not in ['CRC', 'SBBX']]
-    save_conids(tickers, 500, True)
+    universe = pd.read_pickle('./data/SPX+MID+R2K_USD5mADV.pkl')
+    etfs = pd.read_pickle('./data/ETFs.pkl')
+    tickers = universe + etfs
+    save_conids(tickers, 500, False)
