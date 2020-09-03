@@ -19,6 +19,8 @@ def data_bars_to_df(bars):
     if len(errors) > 0:
         warnings.warn(f'None objects in locations {errors}.')
         bars = [b for b in bars if b is not None]
+    if len(bars) == 0:
+        return None
     # Create a dictionary that's almost the multi-indexed df we want
     bar_dict = {(pd.to_datetime(j['t'], utc=True, unit='ms'), i['symbol']):
             [j['o'], j['h'], j['l'], j['c'], j['v']]

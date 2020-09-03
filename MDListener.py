@@ -22,8 +22,10 @@ def update_intraday():
             ib.reauthenticate()
     except:
         ib.connect()
-    data = ib.market_data_history(conids, '', '1min', '1min') #Changed exchange field from SMART
+    data = ib.market_data_history(conids, '', '1min', '1min') # Changed exchange field from SMART
     df = data_bars_to_df(data)
+    if df is None:
+        return None # Give up on this one but stay alive to try again later
     first_time = df.index.get_level_values(0)[0]
     df = df.loc[first_time]
     idx = pd.MultiIndex.from_product([[first_time], df.index])
