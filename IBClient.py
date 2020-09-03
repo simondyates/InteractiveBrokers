@@ -161,12 +161,6 @@ class IBClient(object):
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(self._market_data_history_async(conids, exchange, period, bar))
 
-    def get_quotes(self, conids, since=None, fields=None):
-        # Need to test this and make sure passing None is ok
-        endpoint = 'iserver/marketdata/snapshot'
-        req_type = 'GET'
-        params = {'conids': conids, 'since': since, 'fields': fields}
-        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)
 
     def get_accounts(self):
         # Need to test and see if it makes sense to set attribs from here
@@ -177,12 +171,22 @@ class IBClient(object):
     def market_data_live(self, conids, fields=None):
         endpoint = 'iserver/marketdata/snapshot'
         req_type = 'GET'
-        conids =  ', '.join(map(lambda i: str(i), conids))
-        fields = ', '.join(map(lambda i: str(i), fields))
+        conid_str =  ','.join(map(lambda i: str(i), conids))
+        if fields is not None:
+            field_str = ','.join(map(lambda i: str(i), fields))
         if not self.accounts_queried:
             self.get_accounts()
-        params = {'conids': conids, 'fields': fields}
-        return self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+        params = {'conids': conid_str, 'fields': field_str}
+        response = self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+        # Call repeatedly until all fields present
+        bools = [str(j) in response[i].keys() for i in range(len(response)) for j in fields]
+        timeout = 10
+        while not all(bools) and timeout > 0:
+            sleep(.25)
+            response = self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+            timeout -= 1
+        self._make_request(endpoint='iserver/marketdata/unsubscribeall', req_type='GET')
+        return response
 
     def get_positions(self, id, period='1D'):
         # Need to see what return looks like and page through for more than 30 positions
