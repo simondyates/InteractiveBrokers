@@ -155,7 +155,7 @@ class IBClient(object):
             for conid in conids:
                 tasks.append(self._make_request_async(endpoint=endpoint, req_type=req_type, session=session,
                                      params={'conid': conid, 'exchange': exchange, 'period': period, 'bar': bar}))
-            return await asyncio.gather(*tasks)
+            return await asyncio.gather(*tasks, return_exceptions=True)
 
     def market_data_history(self, conids, exchange, period, bar):
         loop = asyncio.get_event_loop()
