@@ -4,6 +4,11 @@ from IBClient import IBClient
 from IBUtils import data_bars_to_df
 import time
 import urllib3
+import sys
+ll_path = '/home/ubuntu/Dropbox/DataSci/PycharmProjects/LeadLag/Algoseek'
+if ll_path not in sys.path:
+    sys.path.append(ll_path)
+from utils import s3_to_pickle, s3_from_pickle
 
 def test_connection():
     result = ib.market_data_history([int(conids[0])], '', '1min', '1min')
@@ -25,13 +30,14 @@ def update_intraday():
     data = ib.market_data_history(conids, '', '1min', '1min') # Changed exchange field from SMART
     df = data_bars_to_df(data)
     if df is None:
+        print('Received empty response')
         return None # Give up on this one but stay alive to try again later
     first_time = df.index.get_level_values(0)[0]
     df = df.loc[first_time]
     idx = pd.MultiIndex.from_product([[first_time], df.index])
     df.index = idx
     day_data = pd.concat([day_data, df])
-    day_data.to_pickle(f'./data/DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl')
+    s3_to_pickle(day_data, f'DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl')
     return None
 
 def get_next_minute_ten(dt):
@@ -48,20 +54,28 @@ if __name__ == '__main__':
     urllib3.disable_warnings()
 
     # Define universe to listen to
-    universe = pd.read_pickle('./data/SPX+MID+R2K_USD5mADV.pkl')
-    etfs = pd.read_pickle('./data/ETFs.pkl')
-    universe = universe + etfs
+    betas = s3_from_pickle('Betas/30min Betas 20200901 to 20201130.pkl')
+    universe = betas.columns.append(betas.index)
 
-    conid_db = pd.read_pickle('./data/conids.pkl')
-    conids = conid_db.loc[universe]
+    conid_db = s3_from_pickle('Conids/conids.pkl')
+    conid_db.name = 'conid'
+
+    # Select the conids we want, and handle missing ones
+    conids = pd.DataFrame(index=universe).join(conid_db).squeeze()
+    missing = conids[conids.isna()].index.to_list()
+    if len(missing):
+        print(f'Missing {missing}')
+        conids = conids[conids.notna()]
+        # Handle the fact that Nans will have recast the dtype to float
+        conids = conids.astype('uint64')
 
     # Connect and (re-)initialise day_data df
     ib = IBClient()
     ib.connect()
-    dayfile = f'./data/DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl'
-    if os.path.exists(dayfile):
-        day_data = pd.read_pickle(dayfile)
-    else:
+    dayfile = f'DayData/{pd.Timestamp.now():%Y-%m-%d}.pkl'
+    try:
+        day_data = s3_from_pickle(dayfile)
+    except:
         day_data = pd.DataFrame(columns=['Open', 'High', 'Low', 'Close', 'Volume'])
 
     # Loop until start of day, testing connection health every minute
