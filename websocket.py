@@ -1,37 +1,38 @@
-
+from collections import defaultdict
 import asyncio
-import pathlib
 import ssl
 import websockets
-import os
+import ast
 
 ssl_context = ssl.SSLContext(ssl.CERT_REQUIRED)
-localhost_pem = pathlib.Path(__file__).with_name("localhost.pem")
-ssl_context.load_verify_locations(localhost_pem)
+ssl_context.load_verify_locations('localhost.pem')
 
-# To allow https connection
-if (not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None)):
-    ssl._create_default_https_context = ssl._create_unverified_context
+fields = {'31': 'Last', '88': 'BidSz', '84': 'Bid', '86': 'Ask', '85': 'AskSz'}
+quotes = defaultdict(lambda: {k: None for k in fields.values()})
 
 async def receive_messages(websocket):
-    while True:
+    for i in range(10):
+        response = await websocket.recv()
+        response = response.decode('utf-8')
         try:
-            response = await websocket.recv()
-        except websockets.ConnectionClosed:
-            print(f"Terminated")
-            break
+            response = ast.literal_eval(response)
+        except:
+            response = {}
+        for key in [k for k in response.keys() if k in fields.keys()]:
+            quotes[response['conid']][fields[key]] = response[key]
 
-        print(f"< {response}")
-
-async def ib_websocket_connection():
-
+async def ib_websocket_connection(conids):
     uri = "wss://localhost:5000/v1/api/ws"
 
     async with websockets.connect(uri, ssl=ssl_context) as websocket:
         _ = await websocket.recv()
+        
         # Send market data subscription request
-        await websocket.send('smd+265598+{"fields":["31","83"]}')
+        for conid in conids:
+            await websocket.send('smd+'+conid+'+{"fields":["31","88", "84", "86", "85"]}')
+
         await receive_messages(websocket)
 
-asyncio.get_event_loop().run_until_complete(ib_websocket_connection())
-asyncio.get_event_loop().run_forever()
+conids = ['265598', '272093']
+asyncio.get_event_loop().run_until_complete(ib_websocket_connection(conids))
+#asyncio.get_event_loop().run_forever()
