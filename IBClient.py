@@ -184,6 +184,7 @@ class IBClient(object):
         while not all(bools) and timeout > 0:
             sleep(.25)
             response = self._make_request(endpoint=endpoint, req_type=req_type, params=params)
+            bools = [str(j) in response[i].keys() for i in range(len(response)) for j in fields]
             timeout -= 1
         self._make_request(endpoint='iserver/marketdata/unsubscribeall', req_type='GET')
         return response

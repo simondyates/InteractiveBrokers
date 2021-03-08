@@ -1,24 +1,19 @@
-from collections import defaultdict
-import asyncio
-import ssl
-import websockets
-import json
-from queue import SimpleQueue
-import threading
-import pandas as pd
-import time
-from IBClient import IBClient
 import urllib3
-import sys
+import boto3
+import asyncio
+import websockets
+import ssl
+import time
+import pickle
+import pandas as pd
+from IBClient import IBClient
+from queue import Queue
+import threading
 
-ll_path = '/home/ubuntu/Dropbox/DataSci/PycharmProjects/LeadLag/Algoseek'
-if ll_path not in sys.path:
-    sys.path.append(ll_path)
-from utils import s3_to_pickle, s3_from_pickle
-
-fields = {'31': 'Last', '7296': 'Close', '87': 'Volume'}
-quotes = defaultdict(lambda: {k: 0 for k in fields.values()})
-q = SimpleQueue()
+def s3_from_pickle(obj_name, bucket_name='derived-stock-data'):
+    s3 = boto3.resource('s3')
+    obj = s3.Object(bucket_name, obj_name)
+    return pickle.loads(obj.get(RequestPayer='requester')['Body'].read())
 
 async def ib_websocket_async(conids):
     uri = "wss://localhost:5000/v1/api/ws"
@@ -28,10 +23,9 @@ async def ib_websocket_async(conids):
         _ = await websocket.recv()
         # Send market data subscription request
         for conid in conids:
-            await websocket.send('smd+'+conid+'+{"fields":["31","7296", "87"]}')
+            await websocket.send('smd+'+conid+'+{"fields":["31","87"]}')
         while True:
             msg = await websocket.recv()
-            print(msg)
             q.put(msg)
         # Handle disconnect here
 
@@ -39,12 +33,16 @@ def ib_websocket(conids):
     loop = asyncio.new_event_loop()
     return loop.run_until_complete(ib_websocket_async(conids))
 
-def parse_message():
+def save_file():
     while True:
-        # Check and store queue length
-        response = json.loads(q.get())
-        for key in [k for k in response.keys() if k in fields.keys()]:
-            quotes[response['conid']][fields[key]] = response[key]
+        with open('/home/ubuntu/tmp.txt', 'ab') as f:
+            sz = q.qsize()
+            print(f'Queue Size: {sz}')
+            for i in range(sz):
+                f.write(q.get())
+                f.write(b'\n')
+                q.task_done()
+        time.sleep(10)
 
 if __name__ == '__main__':
     urllib3.disable_warnings()
@@ -68,16 +66,11 @@ if __name__ == '__main__':
 
     ib = IBClient()
     ib.connect()
-
-    start_time = pd.Timestamp.now(tz='US/Eastern')
-    stop_time = start_time + pd.Timedelta('20s')
-    conids = ['265598', '272093']
+    q = Queue()
     listener = threading.Thread(target=ib_websocket, args=[conids], daemon=True)
     listener.start()
-    parser = threading.Thread(target=parse_message, daemon=True)
-    parser.start()
-    now_time = pd.Timestamp.now(tz='US/Eastern')
-    #if now_time >= start_time:
-    #    time.sleep((stop_time - now_time).seconds)
-    time.sleep(5)
-    #sys.exit()
+    time.sleep(1)
+    saver = threading.Thread(target=save_file, daemon=True)
+    saver.start()
+    time.sleep(30)
+    q.join()
