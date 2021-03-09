@@ -44,12 +44,13 @@ class IBClient(object):
 
     def check_authenticated(self):
         # Checks to see if an existing sso session is authenticated
-        content = self._make_request(endpoint='iserver/auth/status', req_type='POST')
-        if content is None:
-            self.is_authenticated = False
-        else:
-            self.is_authenticated = content['authenticated']
-        return self.is_authenticated
+        try:
+            content = self._make_request(endpoint='iserver/auth/status', req_type='POST')
+            print('OK')
+            return content['authenticated']
+        except:
+            print('Not OK')
+            return False
 
     def _make_request(self, endpoint, req_type, params=None):
         url = self._ib_gateway_path + endpoint
@@ -71,23 +72,15 @@ class IBClient(object):
 
     def connect(self):
         # Determines whether there's already a valid connection and connects if not
-        try:
-            bool = self.check_authenticated()
-            if bool:
-                return True
-            else:
-                self.get_gateway_pid()
-                print(f'Gateway exists on pid {self.pid} but is not authenticated.')
-                webbrowser.open(self._ib_gateway_url, new=2)
-        except:
+        self.pid = self.get_gateway_pid()
+        self.is_authenticated = self.check_authenticated()
+        if (self.pid is None) or (self.is_authenticated == False):
             print('No gateway')
             subprocess.Popen(args=['bin/run.sh', 'root/conf.yaml'], cwd='./clientportal.gw', preexec_fn=os.setsid)
             webbrowser.open(self._ib_gateway_url, new=2)
-
-        sleep(2)
-        _ = input("\nPress Enter once you've logged in successfully.")
-        self.pid = self.get_gateway_pid()
-        self.is_authenticated = self.check_authenticated()
+            _ = input("\nPress Enter once you've logged in successfully.")
+            self.pid = self.get_gateway_pid()
+            self.is_authenticated = self.check_authenticated()
         return self.is_authenticated
 
     def reauthenticate(self):
@@ -180,8 +173,8 @@ class IBClient(object):
         response = self._make_request(endpoint=endpoint, req_type=req_type, params=params)
         # Call repeatedly until all fields present
         bools = [str(j) in response[i].keys() for i in range(len(response)) for j in fields]
-        timeout = 10
-        while not all(bools) and timeout > 0:
+        timeout = 100
+        while (not all(bools)) and (timeout > 0):
             sleep(.25)
             response = self._make_request(endpoint=endpoint, req_type=req_type, params=params)
             bools = [str(j) in response[i].keys() for i in range(len(response)) for j in fields]
