@@ -77,22 +77,21 @@ def process_message(quotes):
         if sz > max_sz:
             max_sz = sz
             print(f'Queue Max: {sz}')
-            for i in range(sz):
-                response = json.loads(q.get())
-                if 'conid' in response.keys():
-                    conid = str(response['conid'])
-                    t = pd.to_datetime(response['_updated'], utc=True, unit='ms')
-                    minute = t.replace(second=0, microsecond=0)
-                    if '31' in response.keys():
-                        # We do not assume our messages arrived in order
-                        if t < quotes.loc[(minute, conid), 'FirstTradeTime']:
-                            quotes.loc[(minute, conid), ['FirstTradeTime', 'FirstTradePrice']] = [t, response['31']]
-                        if t > quotes.loc[(minute, conid), 'LastTradeTime']:
-                            quotes.loc[(minute, conid), ['LastTradeTime', 'LastTradePrice']] = [t, response['31']]
-                    if '87_raw' in response.keys():
-                        quotes.loc[(minute, conid), 'CumVolume'] = response['87_raw']
-                q.task_done()
-        time.sleep(10)
+        for i in range(sz):
+            response = json.loads(q.get())
+            if 'conid' in response.keys():
+                conid = str(response['conid'])
+                t = pd.to_datetime(response['_updated'], utc=True, unit='ms')
+                minute = t.replace(second=0, microsecond=0)
+                if '31' in response.keys():
+                    # We do not assume our messages arrived in order
+                    if t < quotes.loc[(minute, conid), 'FirstTradeTime']:
+                        quotes.loc[(minute, conid), ['FirstTradeTime', 'FirstTradePrice']] = [t, response['31']]
+                    if t > quotes.loc[(minute, conid), 'LastTradeTime']:
+                        quotes.loc[(minute, conid), ['LastTradeTime', 'LastTradePrice']] = [t, response['31']]
+                if '87_raw' in response.keys():
+                    quotes.loc[(minute, conid), 'CumVolume'] = response['87_raw']
+            q.task_done()
 
 def save_data(quotes):
     while True:
@@ -103,7 +102,6 @@ def save_data(quotes):
         print(f'Save took {duration:0.0f} seconds')
 
 if __name__ == '__main__':
-
     # Get today's trading hours
     NYSE = mcal.get_calendar('NYSE')
     nyse_bday = CustomBusinessDay(holidays=NYSE.holidays().holidays)
