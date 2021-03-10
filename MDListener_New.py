@@ -75,10 +75,8 @@ def ib_websocket(conids):
 
 
 def process_message(quote_dict):
-    # {"server_id":"q0","conid":265598,"_updated":1615299902126,"6119":"q0","31":"118.75","6509":"RpB","topic":"smd+265598"}
-    # {"server_id":"q0","conid":265598,"_updated":1615300714892,"6119":"q0","87":"12.2M","87_raw":1.22E7,"31":"119.46","6509":"RpB","topic":"smd+265598"}
-    start_t = keys[0]
-    stop_t = keys[-1]
+    start_t = times[0]
+    stop_t = times[-1] + 60000 # 3:59 plus 1 minute
     max_sz = 0
     while (sz := q.qsize()) > 0 or listen:
         if sz > max_sz:
@@ -93,9 +91,9 @@ def process_message(quote_dict):
             if 'conid' in response.keys():
                 t = response['_updated']
                 if start_t <= t <= stop_t:
-                    minute = int(60000 * (t // 60000))
                     conid = response['conid']
-                    d = quote_dict[minute][conid]
+                    minute = int(60000 * (t // 60000))
+                    d = quote_dict[conid][minute]
                     write_lock.acquire()
                     if '31' in response.keys():
                         # We do not assume our messages arrived in order
@@ -104,15 +102,15 @@ def process_message(quote_dict):
                             d['FirstTradePrice'] = response['31']
                         if t > d['LastTradeTime']:
                             d['LastTradeTime'] = t
-                            d['FirstTradePrice'] = response['31']
+                            d['LastTradePrice'] = response['31']
                     if '87_raw' in response.keys():
                         d['CumVolume'] = response['87_raw']
                     write_lock.release()
             q.task_done()
 
 def save_data(quote_dict):
-    start_t = pd.Timestamp(keys[0], unit='ms', tz='UTC') + pd.Timedelta('2min') # df might still be empty at start+1min
-    stop_t = pd.Timestamp(keys[-1], unit='ms', tz='UTC') + pd.Timedelta('7min') # last save will be 4:05 approx since index.max is 3:59
+    start_t = pd.Timestamp(times[0], unit='ms', tz='UTC') + pd.Timedelta('2min') # df might still be empty at start+1min
+    stop_t = pd.Timestamp(times[-1], unit='ms', tz='UTC') + pd.Timedelta('7min') # last save will be 4:05 approx since index.max is 3:59
     while True:
         if start_t <= pd.Timestamp.utcnow() <= stop_t:
             start = time.time()
@@ -152,15 +150,15 @@ if __name__ == '__main__':
         quotes = pd.read_pickle(f'/home/ubuntu/DayData/{today:%Y%m%d}.pkl')
         print('Found a day file')
     except:
-        keys = range(int(start_t.value // 1e6), int(end_t.value // 1e6), 60000)
-        quote_dict = {k: {c: {'FirstTradePrice': 0, 'FirstTradeTime': float('inf'),
+        times = range(int(start_t.value // 1e6), int(end_t.value // 1e6), 60000)
+        quote_dict = {c: {t: {'FirstTradePrice': 0, 'FirstTradeTime': float('inf'),
                               'LastTradePrice': 0, 'LastTradeTime': 0,
-                              'YestClose': 0, 'CumVolume': 0} for c in conids} for k in keys}
+                              'YestClose': 0, 'CumVolume': 0} for t in times} for c in conids}
 
         closes = get_closing_prices(ib, conids, days.iloc[0, 0]) # Prev bus day open
-        for d in quote_dict.keys():
-            for k in closes.keys():
-                quote_dict[d][k]['YestClose'] = closes[k]
+        for c in closes.keys():
+            for t in times:
+                quote_dict[c][t]['YestClose'] = closes[c]
 
     listen = True
     listener = threading.Thread(target=ib_websocket, args=[conids])
