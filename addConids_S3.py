@@ -3,6 +3,7 @@ from IBClient import IBClient
 from IBUtils import filter_US_conids
 import urllib3
 import sys
+import time
 ll_path = '/home/ubuntu/Dropbox/DataSci/PycharmProjects/LeadLag/Algoseek'
 if ll_path not in sys.path:
     sys.path.append(ll_path)
@@ -11,6 +12,7 @@ from utils import s3_to_pickle, s3_from_pickle
 def get_conids(tickers):
     ib = IBClient()
     ib.connect()
+    time.sleep(3)
     all_conids = ib.symbol_search(tickers)
     return filter_US_conids(all_conids)
 
@@ -57,6 +59,7 @@ def save_conids(tickers, size, revalidate=False):
 
 if __name__ == '__main__':
     urllib3.disable_warnings()
-    betas = s3_from_pickle('Betas/30min Betas 20200901 to 20201130.pkl')
-    tickers = betas.columns.append(betas.index)
+    stocks = s3_from_pickle('Universes/Current/Stocks.pkl')
+    etfs = s3_from_pickle('Universes/Current/ETFs.pkl')
+    tickers = stocks + etfs
     save_conids(tickers, 500, False)
